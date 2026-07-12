@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "user": {
+      "title": "User",
+      "description": "Represents a student, committee member, or administrator account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the user" },
+        "name": { "type": "string", "description": "Full name of the user" },
+        "email": { "type": "string", "description": "Email address of the user" },
+        "admissionNo": { "type": "string", "description": "College admission/roll number (only for students)" },
+        "role": { "type": "string", "enum": ["student", "committee", "admin"], "description": "User role" },
+        "password": { "type": "string", "description": "Account password" },
+        "firstLogin": { "type": "boolean", "description": "Flag indicating if this is the user's first login and they need to change password" }
+      },
+      "required": ["id", "name", "email", "role", "password", "firstLogin"]
+    },
+    "complaint": {
+      "title": "Complaint",
+      "description": "Represents a maintenance complaint logged on campus",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the complaint" },
+        "studentId": { "type": "string", "description": "User ID of the student who filed it" },
+        "studentName": { "type": "string", "description": "Name of the student who filed it" },
+        "category": { "type": "string", "enum": ["Electrical", "Plumbing", "Internet / Wi-Fi", "Furniture", "Classroom Equipment", "Cleanliness", "Security", "Hostel", "Laboratory", "Other"], "description": "Complaint category" },
+        "description": { "type": "string", "description": "Detailed description of the issue" },
+        "location": { "type": "string", "description": "Campus location or building" },
+        "imageUrl": { "type": "string", "description": "URL of the attached issue photo (optional)" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when filed" },
+        "priority": { "type": "string", "enum": ["Low", "Medium", "High"], "description": "Priority level of the repair" },
+        "approvalStatus": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Committee approval decision" },
+        "rejectionReason": { "type": "string", "description": "Reason for rejection if disapproved" },
+        "status": { "type": "string", "enum": ["pending", "in progress", "resolved"], "description": "Maintenance resolution status" },
+        "assignedStaff": { "type": "string", "description": "Name of the assigned repair staff" }
+      },
+      "required": ["id", "studentId", "studentName", "category", "description", "location", "createdAt", "priority", "approvalStatus", "status"]
+    },
+    "committeeReview": {
+      "title": "Committee Review",
+      "description": "Represents a review record written by the Approval Committee",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the review" },
+        "complaintId": { "type": "string", "description": "ID of reviewed complaint" },
+        "committeeMemberId": { "type": "string", "description": "User ID of committee reviewer" },
+        "decision": { "type": "string", "enum": ["approved", "rejected"], "description": "Review decision" },
+        "reason": { "type": "string", "description": "Decision rationale (mandatory if rejected)" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Review timestamp" }
+      },
+      "required": ["id", "complaintId", "committeeMemberId", "decision", "timestamp"]
+    },
+    "maintenanceLog": {
+      "title": "Maintenance Log",
+      "description": "Represents log details updated for a resolved complaint",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the maintenance log" },
+        "complaintId": { "type": "string", "description": "ID of the associated complaint" },
+        "staffName": { "type": "string", "description": "Name of maintenance person who repaired it" },
+        "repairNotes": { "type": "string", "description": "Description of action taken" },
+        "completionDate": { "type": "string", "format": "date-time", "description": "Completion timestamp" }
+      },
+      "required": ["id", "complaintId", "staffName", "repairNotes", "completionDate"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "#/entities/user",
+      "description": "Collection storing student, committee, and admin accounts"
+    },
+    "/complaints/{complaintId}": {
+      "schema": "#/entities/complaint",
+      "description": "Collection storing all submitted maintenance complaints"
+    },
+    "/committee_reviews/{reviewId}": {
+      "schema": "#/entities/committeeReview",
+      "description": "Collection storing history of review board decisions"
+    },
+    "/maintenance_logs/{logId}": {
+      "schema": "#/entities/maintenanceLog",
+      "description": "Collection storing logs of repairs executed by maintenance staff"
+    }
+  }
+}

@@ -1,0 +1,137 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-slate-950: var(--slate-950);
+  --color-slate-900: var(--slate-900);
+  --color-slate-850: var(--slate-850);
+  --color-slate-800: var(--slate-800);
+  --color-slate-750: var(--slate-750);
+  --color-slate-700: var(--slate-700);
+  --color-slate-600: var(--slate-600);
+  --color-slate-500: var(--slate-500);
+  --color-slate-400: var(--slate-400);
+  --color-slate-300: var(--slate-300);
+  --color-slate-200: var(--slate-200);
+  --color-slate-100: var(--slate-100);
+
+  --color-white: var(--white-custom);
+
+  --color-teal-500: var(--teal-500);
+  --color-teal-400: var(--teal-400);
+  --color-teal-300: var(--teal-300);
+
+  --color-emerald-500: var(--emerald-500);
+  --color-emerald-400: var(--emerald-400);
+  --color-emerald-300: var(--emerald-300);
+
+  --color-amber-500: var(--amber-500);
+  --color-amber-400: var(--amber-400);
+  --color-amber-300: var(--amber-300);
+
+  --color-rose-500: var(--rose-500);
+  --color-rose-400: var(--rose-400);
+}
+
+:root {
+  /* Default to Dark Theme - Clean deep slate slate-950 */
+  --slate-950: #0a0a0c;
+  --slate-900: #121215;
+  --slate-850: #1c1c21;
+  --slate-800: #26262b;
+  --slate-750: #2e2e35;
+  --slate-700: #40404a;
+  --slate-600: #71717a;
+  --slate-500: #a1a1aa;
+  --slate-400: #d4d4d8;
+  --slate-300: #e4e4e7;
+  --slate-200: #f4f4f5;
+  --slate-100: #ffffff;
+
+  --white-custom: #ffffff;
+
+  --teal-500: #2563eb; /* Modern royal blue */
+  --teal-400: #3b82f6; /* Brighter blue */
+  --teal-300: #60a5fa; /* Light accent blue */
+
+  --emerald-500: #10b981;
+  --emerald-400: #34d399;
+  --emerald-300: #6ee7b7;
+
+  --amber-500: #f59e0b;
+  --amber-400: #fbbf24;
+  --amber-300: #fcd34d;
+
+  --rose-500: #ef4444;
+  --rose-400: #f87171;
+}
+
+:root.light {
+  /* Clean, vibrant, premium Vercel/Linear light theme */
+  --slate-950: #f8fafc; /* crisp grey-white page bg */
+  --slate-900: #ffffff; /* cards/panels are pure white */
+  --slate-850: #f1f5f9; /* inputs / hover states */
+  --slate-800: #e2e8f0; /* primary borders - ultra thin soft grey */
+  --slate-750: #f1f5f9; /* dividers */
+  --slate-700: #94a3b8; /* placeholders */
+  --slate-600: #64748b; /* muted text */
+  --slate-500: #475569; /* secondary text */
+  --slate-400: #334155; /* body text */
+  --slate-300: #1e293b; /* subtitle/subheading */
+  --slate-200: #0f172a; /* title text */
+  --slate-100: #020617; /* maximum contrast dark title text */
+
+  --white-custom: #020617; /* Map text-white to very dark color for title text */
+
+  --teal-500: #2563eb; /* Premium Royal Blue */
+  --teal-400: #1d4ed8; /* Strong Blue */
+  --teal-300: #1e40af; /* Deep Royal Blue */
+
+  --emerald-500: #10b981; /* Premium Emerald */
+  --emerald-400: #059669;
+  --emerald-300: #047857;
+
+  --amber-500: #f59e0b;
+  --amber-400: #d97706;
+  --amber-300: #b45309;
+
+  --rose-500: #ef4444;
+  --rose-400: #dc2626;
+}
+
+/* Base override for standard text in light mode */
+:root.light .text-white {
+  color: #020617;
+}
+
+/* Keep white text inside colored backgrounds in light mode */
+:root.light .bg-rose-500,
+:root.light .bg-emerald-500,
+:root.light .bg-teal-500,
+:root.light .bg-amber-500,
+:root.light .bg-indigo-600,
+:root.light .bg-blue-600,
+:root.light button.bg-teal-500,
+:root.light button.bg-rose-500,
+:root.light button.bg-emerald-500,
+:root.light button.bg-amber-500,
+:root.light .text-pure-white {
+  color: #ffffff !important;
+}
+
+/* Ensure child elements with text-slate-950 in colored backgrounds are readable */
+:root.light .bg-teal-500 .text-slate-950,
+:root.light .bg-emerald-500 .text-slate-950,
+:root.light .bg-rose-500 .text-slate-950,
+:root.light .bg-amber-500 .text-slate-950,
+:root.light button .text-slate-950 {
+  color: #ffffff !important;
+}
+
+/* Subtle transitions for theme toggle */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}

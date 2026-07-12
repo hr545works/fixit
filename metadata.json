@@ -1,0 +1,6 @@
+{
+  "name": "Smart Campus Complaint & Maintenance Management System",
+  "description": "A digitized web platform to record, screen, assign, and track campus maintenance complaints, reducing response times and improving transparency.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
