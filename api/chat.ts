@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getGeminiClient, CHAT_SYSTEM_INSTRUCTION } from "./_gemini";
+import { getGeminiClient, CHAT_SYSTEM_INSTRUCTION } from "./_gemini.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
