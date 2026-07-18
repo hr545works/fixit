@@ -85,6 +85,25 @@ export function disableOfflineMode() {
   }
 }
 
+// Manually attempt to reconnect to the real cloud database. Call this from
+// a "Retry Connection" button. It flips offlineModeState back to false so
+// the next read/write/listener tries the real Firestore again; if that
+// attempt also fails or times out, the existing getDocs/setDoc/onSnapshot
+// fallback logic will automatically re-enable offline mode on its own.
+export async function retryConnection(): Promise<boolean> {
+  disableOfflineMode();
+  try {
+    const testRef = realCollection(db, 'metadata');
+    await withTimeout(realGetDocs(testRef), 4000);
+    // Success — stayed online (disableOfflineMode already fired the event).
+    return true;
+  } catch (err) {
+    console.warn('retryConnection: still unable to reach the cloud database.', err);
+    enableOfflineMode();
+    return false;
+  }
+}
+
 function getLocalCollection(colName: string): any[] {
   const data = localStorage.getItem(LOCAL_STORAGE_PREFIX + colName);
   if (!data) {
@@ -341,11 +360,20 @@ function executeLocalUpdateDoc(docRef: any, data: any) {
   const index = items.findIndex(item => item.id === docId);
   if (index >= 0) {
     items[index] = { ...items[index], ...data, id: docId };
-    saveLocalCollection(colName, items);
-    triggerListenersForCollection(colName);
   } else {
-    throw new Error(`Document not found for update: ${colName}/${docId}`);
+    // IMPORTANT: previously this branch threw an error, which was silently
+    // swallowed by the try/catch around the mirror-write in updateDoc().
+    // That meant any document that existed only on the real server (e.g. a
+    // student account created after the local mirror was last seeded) would
+    // NEVER get mirrored locally. Later, if the app fell back to offline
+    // mode (e.g. on a page refresh with a slow connection), reads would hit
+    // the local mirror and see stale/default data (like firstLogin: true)
+    // even though the real update had succeeded. Upserting here keeps the
+    // local mirror consistent with every successful write, online or not.
+    items.push({ ...data, id: docId });
   }
+  saveLocalCollection(colName, items);
+  triggerListenersForCollection(colName);
 }
 
 export async function addDoc(colRef: any, data: any) {
