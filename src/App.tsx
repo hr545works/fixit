@@ -550,7 +550,7 @@ async function runLogAutoCleanupIfDue() {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [studentActiveTab, setStudentActiveTab] = useState<'dashboard' | 'file' | 'assistant' | 'about' | 'manage_accounts' | 'create_account' | 'resolve' | 'approving' | 'assignment' | 'logs'>('dashboard');
+  const [studentActiveTab, setStudentActiveTab] = useState<'dashboard' | 'file' | 'assistant' | 'about' | 'manage_accounts' | 'create_account' | 'resolve' | 'approving' | 'assignment' | 'logs' | 'approved_complaints'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
   const [appReady, setAppReady] = useState(false);
@@ -1183,6 +1183,23 @@ export default function App() {
                       </button>
                     )}
 
+                    {currentUser.role === 'student' && (
+                      <button
+                        onClick={() => setStudentActiveTab('approved_complaints')}
+                        title={isSidebarMinimized ? "Complaints Approved" : ""}
+                        className={`flex items-center rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer w-full text-left whitespace-nowrap ${
+                          isSidebarMinimized ? 'md:justify-center p-2.5' : 'gap-3 px-3 py-2.5'
+                        } ${
+                          studentActiveTab === 'approved_complaints'
+                            ? 'bg-teal-500/10 text-teal-400 border-l-2 border-teal-400 shadow-md shadow-teal-500/5'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850/40'
+                        }`}
+                      >
+                        <ShieldCheck size={14} />
+                        {!isSidebarMinimized && <span>Complaints Approved</span>}
+                      </button>
+                    )}
+
                     {currentUser.role === 'admin' && (
                       <>
                         <button
@@ -1457,6 +1474,9 @@ export default function App() {
                 {studentActiveTab === 'approving' && (
                   <CommitteeDashboard currentUser={currentUser} complaints={allComplaints} forcedTab="approving" />
                 )}
+                {studentActiveTab === 'approved_complaints' && (
+                  <StudentApprovedComplaints />
+                )}
                 {studentActiveTab === 'file' && (
                   <StudentComplaintForm currentUser={currentUser} onComplaintSubmitted={handleStudentSubmitComplaint} />
                 )}
@@ -1557,6 +1577,125 @@ export default function App() {
             </button>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// Lets an admin edit an existing account's details (name, email, and
+// admission number for students). Password/role changes stay out of scope
+// here — those already have dedicated, safer flows elsewhere in the app.
+interface AdminEditUserModalProps {
+  targetUser: User;
+  onClose: () => void;
+  onSaved: (updatedUser: User) => void;
+}
+
+function AdminEditUserModal({ targetUser, onClose, onSaved }: AdminEditUserModalProps) {
+  const [name, setName] = useState(targetUser.name);
+  const [email, setEmail] = useState(targetUser.email);
+  const [admissionNo, setAdmissionNo] = useState(targetUser.admissionNo || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) {
+      setError('Name and email cannot be empty.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const updateData: Partial<User> = {
+        name: name.trim(),
+        email: email.trim(),
+      };
+      if (targetUser.role === 'student') {
+        updateData.admissionNo = admissionNo.trim();
+      }
+      await updateDoc(doc(db, 'users', targetUser.id), updateData);
+      onSaved({ ...targetUser, ...updateData });
+    } catch (err) {
+      console.error('Error updating account details:', err);
+      setError('Could not save changes. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative animate-fade-in">
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 text-slate-500 hover:text-slate-200 cursor-pointer"
+          title="Close"
+        >
+          <XCircle size={18} />
+        </button>
+
+        <div className="mb-5">
+          <h2 className="text-lg font-black text-white tracking-tight uppercase">Edit Account Details</h2>
+          <p className="text-[10px] text-slate-400 mt-1 font-mono">ID: {targetUser.id} &bull; {getRoleDisplayName(targetUser)}</p>
+        </div>
+
+        {error && (
+          <div className="mb-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-xl text-xs">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 tracking-wider uppercase mb-1 font-mono">Full Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-teal-500 font-mono"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 tracking-wider uppercase mb-1 font-mono">Email Address</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-teal-500 font-mono"
+              required
+            />
+          </div>
+          {targetUser.role === 'student' && (
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 tracking-wider uppercase mb-1 font-mono">College Admission Number</label>
+              <input
+                type="text"
+                value={admissionNo}
+                onChange={(e) => setAdmissionNo(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-teal-500 font-mono"
+              />
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold font-mono uppercase transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 py-2.5 bg-teal-500 hover:bg-teal-400 text-slate-950 rounded-xl text-xs font-black font-mono uppercase transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -2377,6 +2516,144 @@ interface StudentDashboardProps {
   currentUser: User;
   complaints: Complaint[];
   setActiveTab?: (tab: 'dashboard' | 'file' | 'assistant' | 'about') => void;
+}
+
+// Campus-wide list of APPROVED complaints only (never pending/rejected, never
+// full complaint contact details beyond what's already public-facing here).
+// Lives in its own sidebar tab so students can check whether an issue has
+// already been reported/approved before filing a duplicate — without that
+// campus-wide data being mixed into the student's personal dashboard.
+function StudentApprovedComplaints() {
+  const [campusComplaints, setCampusComplaints] = useState<Complaint[]>([]);
+  const [loadingCampus, setLoadingCampus] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('All');
+
+  useEffect(() => {
+    const q = query(collection(db, 'complaints'), where('approvalStatus', '==', 'approved'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: Complaint[] = [];
+      snapshot.forEach((doc: any) => {
+        list.push({ ...doc.data(), id: doc.id } as Complaint);
+      });
+      list.sort((a, b) => b.createdAt - a.createdAt);
+      setCampusComplaints(list);
+      setLoadingCampus(false);
+    }, (error) => {
+      console.error('Error fetching approved campus complaints:', error);
+      setLoadingCampus(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const filtered = useMemo(() => {
+    return campusComplaints.filter((c) => {
+      const matchesSearch =
+        c.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.description.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = categoryFilter === 'All' || c.category === categoryFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [campusComplaints, searchTerm, categoryFilter]);
+
+  const metrics = useMemo(() => {
+    return {
+      total: campusComplaints.length,
+      pending: campusComplaints.filter((c) => c.status === 'pending').length,
+      inProgress: campusComplaints.filter((c) => c.status === 'in progress').length,
+      resolved: campusComplaints.filter((c) => c.status === 'resolved').length,
+    };
+  }, [campusComplaints]);
+
+  const categories = useMemo(() => {
+    const set = new Set(campusComplaints.map((c) => c.category));
+    return ['All', ...Array.from(set)];
+  }, [campusComplaints]);
+
+  return (
+    <div className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-6 flex flex-col gap-4">
+      <div>
+        <h2 className="text-lg font-black text-white tracking-tight uppercase">Complaints Approved</h2>
+        <p className="text-xs text-slate-400 mt-1">
+          Already-approved campus issues. Check here before filing — if it's already reported, there's no need to duplicate it.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 bg-slate-900 border border-slate-850 p-4 rounded-2xl relative overflow-hidden">
+        <div className="text-center">
+          <div className="text-lg md:text-xl font-black text-white">{metrics.total}</div>
+          <div className="text-[9px] text-slate-400 font-bold font-mono uppercase tracking-wider mt-0.5">Approved Total</div>
+        </div>
+        <div className="text-center border-l border-slate-800/80">
+          <div className="text-lg md:text-xl font-black text-sky-400">{metrics.inProgress}</div>
+          <div className="text-[9px] text-slate-400 font-bold font-mono uppercase tracking-wider mt-0.5">Being Fixed</div>
+        </div>
+        <div className="text-center border-l border-slate-800/80">
+          <div className="text-lg md:text-xl font-black text-emerald-400">{metrics.resolved}</div>
+          <div className="text-[9px] text-slate-400 font-bold font-mono uppercase tracking-wider mt-0.5">Resolved</div>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="text"
+          placeholder="Search location or description..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="flex-1 bg-slate-950 border border-slate-850 text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-teal-500 font-mono"
+        />
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="bg-slate-950 border border-slate-850 text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-teal-500 font-mono"
+        >
+          {categories.map((cat) => (
+            <option key={cat} value={cat}>{cat}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-850 rounded-2xl flex-1 flex flex-col overflow-hidden min-h-[400px]">
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-800/50">
+          {loadingCampus ? (
+            <div className="p-12 text-center text-slate-500 text-xs font-mono">Loading approved complaints...</div>
+          ) : filtered.length === 0 ? (
+            <div className="p-12 text-center text-slate-500">
+              <ShieldCheck size={36} className="mx-auto mb-2 text-slate-700" />
+              <p className="text-xs font-bold font-mono uppercase text-slate-400">No approved complaints found</p>
+            </div>
+          ) : (
+            filtered.map((comp) => (
+              <div key={comp.id} className="p-4 flex items-start justify-between gap-4">
+                <div className="space-y-1 flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-extrabold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono uppercase">
+                      {comp.category}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                      <MapPin size={10} /> {comp.location}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300">{comp.description}</p>
+                </div>
+                <span
+                  className={`text-[9px] font-bold font-mono px-2 py-0.5 rounded border uppercase shrink-0 ${
+                    comp.status === 'resolved'
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : comp.status === 'in progress'
+                      ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  }`}
+                >
+                  {comp.status}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function StudentDashboard({ currentUser, complaints, setActiveTab }: StudentDashboardProps) {
@@ -3982,6 +4259,7 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
   const [newRole, setNewRole] = useState<'student' | 'staff' | 'approval' | 'management' | 'admin'>('student');
   const [userSuccess, setUserSuccess] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userFilter, setUserFilter] = useState<'all' | 'newly_created'>('all');
   const [confirmDismissId, setConfirmDismissId] = useState<string | null>(null);
 
@@ -5109,6 +5387,16 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
                         {getRoleDisplayName(usr)}
                       </span>
 
+                      {/* Edit Account Details */}
+                      <button
+                        onClick={() => setEditingUser(usr)}
+                        className="p-1.5 bg-slate-800/50 hover:bg-teal-500/20 text-slate-400 hover:text-teal-400 rounded-lg border border-slate-800 hover:border-teal-500/30 transition-all cursor-pointer flex items-center justify-center"
+                        title="Edit account details"
+                        id={`edit-user-${usr.id}`}
+                      >
+                        <Settings size={13} />
+                      </button>
+
                       {/* Newly Created Actions */}
                       {usr.id !== currentUser.id && (usr.isNew || usr.status === 'newly_created') && (
                         <div className="flex items-center gap-1 ml-1 pl-1 border-l border-slate-850">
@@ -5291,6 +5579,15 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
 
       {/* Floating Gemini Chatbot Widget */}
       <ChatBotWidget />
+
+      {/* Edit Account Details Modal */}
+      {editingUser && (
+        <AdminEditUserModal
+          targetUser={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSaved={() => setEditingUser(null)}
+        />
+      )}
     </div>
   );
 }
