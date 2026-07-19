@@ -4305,6 +4305,14 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
     return complaints.filter((c) => c.status === 'resolved');
   }, [complaints]);
 
+  const approvedWaitingLogs = useMemo(() => {
+    return complaints.filter((c) => c.approvalStatus === 'approved' && c.status === 'pending');
+  }, [complaints]);
+
+  const rejectedLogs = useMemo(() => {
+    return complaints.filter((c) => c.approvalStatus === 'rejected');
+  }, [complaints]);
+
   const newlyCreatedCount = useMemo(() => {
     return users.filter((u) => u.isNew === true || u.status === 'newly_created').length;
   }, [users]);
@@ -4518,10 +4526,14 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
     }
   };
 
-  // Admin Actions: Clear All Maintenance Logs
+  // Admin Actions: Clear All Maintenance Logs (all three categories together)
   const [clearingLogs, setClearingLogs] = useState(false);
+  const allLogEntries = useMemo(() => {
+    return [...approvedWaitingLogs, ...resolvedLogs, ...rejectedLogs];
+  }, [approvedWaitingLogs, resolvedLogs, rejectedLogs]);
+
   const handleClearAllLogs = async () => {
-    if (!window.confirm("Are you sure you want to clear ALL resolved maintenance logs? This action is permanent and irreversible.")) {
+    if (!window.confirm(`Are you sure you want to clear ALL ${allLogEntries.length} logs (Approved Waiting, Resolved, and Rejected)? Approved-waiting tickets are still unresolved requests, not just old records. This action is permanent and irreversible.`)) {
       return;
     }
     setClearingLogs(true);
@@ -4531,7 +4543,7 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
     // the rest of the batch (which is what made "Clear All Logs" look
     // like it silently did nothing if any single delete failed).
     const results = await Promise.allSettled(
-      resolvedLogs.map(async (log) => {
+      allLogEntries.map(async (log) => {
         await deleteDoc(doc(db, 'complaints', log.id));
         const logsQuery = query(collection(db, 'maintenance_logs'), where('complaintId', '==', log.id));
         const logsSnapshot = await getDocs(logsQuery);
@@ -4693,31 +4705,15 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
 
               {/* Status legends custom */}
               <div className="mt-4 space-y-1.5 text-[10px] font-mono">
-                {chartsData.statusData.map((item) => {
-                  const isResettable = item.name === 'Approved (Waiting)' || item.name === 'Resolved' || item.name === 'Rejected';
-                  return (
-                    <div key={item.name} className="flex justify-between items-center">
-                      <div className="flex items-center gap-1.5 text-slate-300">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
-                        <span>{item.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white">{item.value} tickets</span>
-                        {isResettable && (
-                          <button
-                            onClick={() => handleResetStatusCategory(item.name as 'Approved (Waiting)' | 'Resolved' | 'Rejected')}
-                            disabled={resettingCategory === item.name}
-                            title={`Clear all "${item.name}" tickets`}
-                            id={`reset-status-${item.name.replace(/[^a-zA-Z]/g, '').toLowerCase()}`}
-                            className="p-1 bg-rose-500/10 hover:bg-rose-500 border border-rose-500/20 text-rose-400 hover:text-white rounded-md transition-all cursor-pointer flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <Trash2 size={10} />
-                          </button>
-                        )}
-                      </div>
+                {chartsData.statusData.map((item) => (
+                  <div key={item.name} className="flex justify-between items-center">
+                    <div className="flex items-center gap-1.5 text-slate-300">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
+                      <span>{item.name}</span>
                     </div>
-                  );
-                })}
+                    <span className="font-bold text-white">{item.value} tickets</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -5570,7 +5566,7 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
               </h3>
               <p className="text-[10px] text-slate-400 mt-0.5">Chronological list of resolved complaints and repair actions</p>
             </div>
-            {resolvedLogs.length > 0 && (
+            {allLogEntries.length > 0 && (
               <button
                 onClick={handleClearAllLogs}
                 disabled={clearingLogs}
@@ -5581,6 +5577,37 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
                 <span>{clearingLogs ? 'Clearing…' : 'Clear All Logs'}</span>
               </button>
             )}
+          </div>
+
+          {/* Status Distribution — three columns, each individually clearable */}
+          <div className="p-4 border-b border-slate-800/80 bg-slate-950/10">
+            <h4 className="text-[11px] font-bold text-slate-300 font-mono uppercase tracking-wider mb-3">Status Distribution</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {([
+                { label: 'Approved (Waiting)', items: approvedWaitingLogs, color: 'text-sky-400', dot: 'bg-sky-400' },
+                { label: 'Resolved', items: resolvedLogs, color: 'text-emerald-400', dot: 'bg-emerald-400' },
+                { label: 'Rejected', items: rejectedLogs, color: 'text-rose-400', dot: 'bg-rose-400' },
+              ] as const).map((col) => (
+                <div key={col.label} className="bg-slate-900 border border-slate-850 rounded-xl p-3 flex flex-col gap-2">
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase text-slate-300">
+                    <div className={`w-2 h-2 rounded-full ${col.dot}`}></div>
+                    {col.label}
+                  </div>
+                  <div className={`text-xl font-black font-mono ${col.color}`}>
+                    {col.items.length} <span className="text-[10px] font-bold text-slate-500 uppercase">tickets</span>
+                  </div>
+                  <button
+                    onClick={() => handleResetStatusCategory(col.label)}
+                    disabled={col.items.length === 0 || resettingCategory === col.label}
+                    id={`clear-status-${col.label.replace(/[^a-zA-Z]/g, '').toLowerCase()}`}
+                    className="mt-1 px-2 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 text-rose-400 hover:text-rose-300 text-[9px] font-mono font-bold uppercase rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 size={10} />
+                    {resettingCategory === col.label ? 'Clearing…' : 'Clear'}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Auto-Delete Schedule (admin-only) */}
