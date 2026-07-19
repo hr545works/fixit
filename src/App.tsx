@@ -551,6 +551,11 @@ async function runLogAutoCleanupIfDue() {
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [studentActiveTab, setStudentActiveTab] = useState<'dashboard' | 'file' | 'assistant' | 'about' | 'manage_accounts' | 'create_account' | 'resolve' | 'approving' | 'assignment' | 'logs' | 'approved_complaints'>('dashboard');
+  const [pendingResolveTicketId, setPendingResolveTicketId] = useState<string | null>(null);
+  const handleOpenTicketInResolve = (complaintId: string) => {
+    setPendingResolveTicketId(complaintId);
+    setStudentActiveTab('resolve');
+  };
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
   const [appReady, setAppReady] = useState(false);
@@ -1247,7 +1252,7 @@ export default function App() {
 
                     {(currentUser.role === 'management' || (currentUser.role === 'committee' && (currentUser.authority === 'teachers' || currentUser.id === 'staff'))) && (
                       <button
-                        onClick={() => setStudentActiveTab('resolve')}
+                        onClick={() => { setPendingResolveTicketId(null); setStudentActiveTab('resolve'); }}
                         title={isSidebarMinimized ? "Resolve" : ""}
                         className={`flex items-center rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer w-full text-left whitespace-nowrap ${
                           isSidebarMinimized ? 'md:justify-center p-2.5' : 'gap-3 px-3 py-2.5'
@@ -1418,13 +1423,13 @@ export default function App() {
                       <CommitteeDashboard currentUser={currentUser} complaints={allComplaints} forcedTab="dashboard" />
                     )}
                     {currentUser.role === 'committee' && (currentUser.authority === 'teachers' || currentUser.id === 'staff') && (
-                      <ManagementDashboard currentUser={currentUser} complaints={allComplaints} forcedTab="dashboard" />
+                      <ManagementDashboard currentUser={currentUser} complaints={allComplaints} forcedTab="dashboard" onOpenTicket={handleOpenTicketInResolve} />
                     )}
                     {currentUser.role === 'admin' && (
                       <AdminDashboard currentUser={currentUser} complaints={allComplaints} users={allUsers} forcedTab="analytics" />
                     )}
                     {currentUser.role === 'management' && (
-                      <ManagementDashboard currentUser={currentUser} complaints={allComplaints} forcedTab="dashboard" />
+                      <ManagementDashboard currentUser={currentUser} complaints={allComplaints} forcedTab="dashboard" onOpenTicket={handleOpenTicketInResolve} />
                     )}
                   </>
                 )}
@@ -1438,7 +1443,12 @@ export default function App() {
                   <AdminDashboard currentUser={currentUser} complaints={allComplaints} users={allUsers} forcedTab="logs" />
                 )}
                 {studentActiveTab === 'resolve' && (
-                  <ManagementDashboard currentUser={currentUser} complaints={allComplaints} forcedTab="resolve" />
+                  <ManagementDashboard
+                    currentUser={currentUser}
+                    complaints={allComplaints}
+                    forcedTab="resolve"
+                    initialSelectedId={pendingResolveTicketId}
+                  />
                 )}
                 {studentActiveTab === 'approving' && (
                   <CommitteeDashboard currentUser={currentUser} complaints={allComplaints} forcedTab="approving" />
@@ -3656,9 +3666,11 @@ interface ManagementDashboardProps {
   currentUser: User;
   complaints: Complaint[];
   forcedTab?: 'dashboard' | 'resolve';
+  onOpenTicket?: (complaintId: string) => void;
+  initialSelectedId?: string | null;
 }
 
-function ManagementDashboard({ currentUser, complaints, forcedTab = 'dashboard' }: ManagementDashboardProps) {
+function ManagementDashboard({ currentUser, complaints, forcedTab = 'dashboard', onOpenTicket, initialSelectedId }: ManagementDashboardProps) {
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
   const [progressNotes, setProgressNotes] = useState('');
   const [assignedStaffInput, setAssignedStaffInput] = useState('');
@@ -3689,6 +3701,18 @@ function ManagementDashboard({ currentUser, complaints, forcedTab = 'dashboard' 
     });
   }, [complaints, currentUser]);
 
+  // If we were navigated here from the dashboard registry with a specific
+  // ticket in mind, select it automatically once it's available.
+  useEffect(() => {
+    if (forcedTab === 'resolve' && initialSelectedId) {
+      const match = approvedComplaints.find((c) => c.id === initialSelectedId);
+      if (match) {
+        setSelectedComplaint(match);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forcedTab, initialSelectedId, approvedComplaints.length]);
+
   // Search and status filter
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'pending' | 'in progress' | 'resolved'>('All');
@@ -3712,6 +3736,23 @@ function ManagementDashboard({ currentUser, complaints, forcedTab = 'dashboard' 
       progress: approvedComplaints.filter((c) => c.status === 'in progress').length,
       resolved: approvedComplaints.filter((c) => c.status === 'resolved').length,
     };
+  }, [approvedComplaints]);
+
+  // Chart data for the dashboard graphs (scoped to this resolver's own queue)
+  const dashboardChartsData = useMemo(() => {
+    const categories: { [key: string]: number } = {};
+    approvedComplaints.forEach((c) => {
+      categories[c.category] = (categories[c.category] || 0) + 1;
+    });
+    const categoryData = Object.keys(categories).map((k) => ({ name: k, Complaints: categories[k] }));
+
+    const statusData = [
+      { name: 'Pending', value: approvedComplaints.filter((c) => c.status === 'pending').length, color: '#f59e0b' },
+      { name: 'In Progress', value: approvedComplaints.filter((c) => c.status === 'in progress').length, color: '#0ea5e9' },
+      { name: 'Resolved', value: approvedComplaints.filter((c) => c.status === 'resolved').length, color: '#10b981' },
+    ].filter((item) => item.value > 0);
+
+    return { categoryData, statusData };
   }, [approvedComplaints]);
 
   const handleUpdateProgress = async (e: React.FormEvent, newStatus: 'in progress' | 'resolved') => {
@@ -3771,30 +3812,6 @@ function ManagementDashboard({ currentUser, complaints, forcedTab = 'dashboard' 
     }
   };
 
-  // Delete a resolved ticket's log record (available to Staff & Management)
-  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
-  const handleDeleteResolvedLog = async (e: React.MouseEvent, complaintId: string) => {
-    e.stopPropagation();
-    if (!window.confirm('Delete this resolved log record permanently? This cannot be undone.')) {
-      return;
-    }
-    setDeletingLogId(complaintId);
-    try {
-      await deleteDoc(doc(db, 'complaints', complaintId));
-      const logsQuery = query(collection(db, 'maintenance_logs'), where('complaintId', '==', complaintId));
-      const logsSnapshot = await getDocs(logsQuery);
-      await Promise.allSettled(logsSnapshot.docs.map((d: any) => deleteDoc(doc(db, 'maintenance_logs', d.id))));
-      if (selectedComplaint?.id === complaintId) {
-        setSelectedComplaint(null);
-      }
-    } catch (err) {
-      console.error('Error deleting resolved log:', err);
-      setError('Could not delete this log record.');
-    } finally {
-      setDeletingLogId(null);
-    }
-  };
-
   if (forcedTab === 'dashboard') {
     return (
       <div className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6 animate-fade-in">
@@ -3820,6 +3837,63 @@ function ManagementDashboard({ currentUser, complaints, forcedTab = 'dashboard' 
             <div className="text-[10px] text-slate-400 font-bold font-mono uppercase tracking-wider">Successfully Resolved</div>
             <div className="text-3xl font-black text-emerald-400 mt-1">{metrics.resolved}</div>
             <div className="text-[10px] text-emerald-400 font-mono mt-0.5">Frictionless closure</div>
+          </div>
+        </div>
+
+        {/* Graphs */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-7 bg-slate-900 border border-slate-850 p-5 rounded-2xl flex flex-col min-h-[300px]">
+            <h3 className="font-bold text-white text-sm font-mono uppercase tracking-wider mb-4 flex items-center gap-1.5">
+              <TrendingUp size={16} className="text-teal-400" /> Complaints by Category
+            </h3>
+            <div className="flex-1 min-h-[220px]">
+              {dashboardChartsData.categoryData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-slate-500 text-xs">No reports yet</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dashboardChartsData.categoryData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--slate-850)" vertical={false} />
+                    <XAxis dataKey="name" stroke="var(--slate-500)" fontSize={9} tickLine={false} interval={0} angle={-20} textAnchor="end" height={50} />
+                    <YAxis stroke="var(--slate-500)" fontSize={10} tickLine={false} allowDecimals={false} />
+                    <Tooltip contentStyle={{ backgroundColor: 'var(--slate-900)', borderColor: 'var(--slate-800)', color: 'var(--slate-100)', borderRadius: '12px', fontSize: '11px' }} />
+                    <Bar dataKey="Complaints" fill="var(--teal-500)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          <div className="lg:col-span-5 bg-slate-900 border border-slate-850 p-5 rounded-2xl flex flex-col min-h-[300px]">
+            <h3 className="font-bold text-white text-sm font-mono uppercase tracking-wider mb-4 flex items-center gap-1.5">
+              <Activity size={16} className="text-teal-400" /> Status Breakdown
+            </h3>
+            <div className="flex-1 min-h-[180px] flex items-center justify-center">
+              {dashboardChartsData.statusData.length === 0 ? (
+                <div className="text-slate-500 text-xs">No reports yet</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={dashboardChartsData.statusData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={5} dataKey="value">
+                      {dashboardChartsData.statusData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: 'var(--slate-900)', borderColor: 'var(--slate-800)', color: 'var(--slate-100)', borderRadius: '12px', fontSize: '11px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            <div className="mt-3 space-y-1 text-[10px] font-mono">
+              {dashboardChartsData.statusData.map((item) => (
+                <div key={item.name} className="flex justify-between items-center">
+                  <div className="flex items-center gap-1.5 text-slate-300">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
+                    <span>{item.name}</span>
+                  </div>
+                  <span className="font-bold text-white">{item.value}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -3864,7 +3938,12 @@ function ManagementDashboard({ currentUser, complaints, forcedTab = 'dashboard' 
               </div>
             ) : (
               filteredComplaints.map((comp) => (
-                <div key={comp.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-850/10 transition-all">
+                <div
+                  key={comp.id}
+                  onClick={() => onOpenTicket && onOpenTicket(comp.id)}
+                  className={`p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-850/10 transition-all ${onOpenTicket ? 'cursor-pointer' : ''}`}
+                  title={onOpenTicket ? 'Open in Resolve' : undefined}
+                >
                   <div className="space-y-1 flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] font-extrabold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono uppercase">
@@ -4022,20 +4101,9 @@ function ManagementDashboard({ currentUser, complaints, forcedTab = 'dashboard' 
                       </span>
 
                       {comp.status === 'resolved' ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="bg-emerald-500/15 text-emerald-400 text-[9px] font-extrabold font-mono uppercase px-1.5 py-0.5 rounded">
-                            Resolved
-                          </span>
-                          <button
-                            onClick={(e) => handleDeleteResolvedLog(e, comp.id)}
-                            disabled={deletingLogId === comp.id}
-                            title="Delete this log record"
-                            id={`delete-resolved-log-${comp.id}`}
-                            className="p-1 bg-rose-500/10 hover:bg-rose-500 border border-rose-500/20 text-rose-400 hover:text-white rounded-md transition-all cursor-pointer flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <Trash2 size={11} />
-                          </button>
-                        </div>
+                        <span className="bg-emerald-500/15 text-emerald-400 text-[9px] font-extrabold font-mono uppercase px-1.5 py-0.5 rounded">
+                          Resolved
+                        </span>
                       ) : comp.status === 'in progress' ? (
                         <span className="bg-sky-500/15 text-sky-400 text-[9px] font-extrabold font-mono uppercase px-1.5 py-0.5 rounded animate-pulse">
                           In Progress
