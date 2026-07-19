@@ -736,10 +736,6 @@ export default function App() {
     };
   }, [currentUser]);
 
-  const adminApprovedQueueCount = useMemo(() => {
-    return allComplaints.filter((c) => c.approvalStatus === 'approved' && c.status !== 'resolved').length;
-  }, [allComplaints]);
-
   // Seed DB and restore session on mount
   useEffect(() => {
     async function init() {
@@ -1218,30 +1214,6 @@ export default function App() {
                         </button>
 
                         <button
-                          onClick={() => setStudentActiveTab('assignment')}
-                          title={isSidebarMinimized ? "Assign Repair Staff" : ""}
-                          className={`flex items-center rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer w-full text-left whitespace-nowrap relative ${
-                            isSidebarMinimized ? 'md:justify-center p-2.5' : 'gap-3 px-3 py-2.5'
-                          } ${
-                            studentActiveTab === 'assignment'
-                              ? 'bg-teal-500/10 text-teal-400 border-l-2 border-teal-400 shadow-md shadow-teal-500/5'
-                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850/40'
-                          }`}
-                        >
-                          <Wrench size={14} />
-                          {!isSidebarMinimized && <span>Assign Repair Staff</span>}
-                          {adminApprovedQueueCount > 0 && (
-                            <span className={`bg-rose-500 text-white font-bold rounded-full flex items-center justify-center shrink-0 ${
-                              isSidebarMinimized 
-                                ? 'absolute top-1 right-1 text-[8px] w-3.5 h-3.5' 
-                                : 'ml-auto text-[9px] w-4 h-4'
-                            }`}>
-                              {adminApprovedQueueCount}
-                            </span>
-                          )}
-                        </button>
-
-                        <button
                           onClick={() => setStudentActiveTab('manage_accounts')}
                           title={isSidebarMinimized ? "Manage Accounts" : ""}
                           className={`flex items-center rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer w-full text-left whitespace-nowrap ${
@@ -1461,9 +1433,6 @@ export default function App() {
                 )}
                 {studentActiveTab === 'create_account' && currentUser.role === 'admin' && (
                   <AdminDashboard currentUser={currentUser} complaints={allComplaints} users={allUsers} forcedTab="create_account" />
-                )}
-                {studentActiveTab === 'assignment' && currentUser.role === 'admin' && (
-                  <AdminDashboard currentUser={currentUser} complaints={allComplaints} users={allUsers} forcedTab="assignment" />
                 )}
                 {studentActiveTab === 'logs' && currentUser.role === 'admin' && (
                   <AdminDashboard currentUser={currentUser} complaints={allComplaints} users={allUsers} forcedTab="logs" />
@@ -4579,6 +4548,40 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
     setClearingLogs(false);
   };
 
+  // Reset (permanently delete) all tickets in a given Status Distribution
+  // category. Used on the Analytics tab so admin can clear out
+  // Approved (Waiting) / Resolved / Rejected tickets directly.
+  const [resettingCategory, setResettingCategory] = useState<string | null>(null);
+  const handleResetStatusCategory = async (categoryName: 'Approved (Waiting)' | 'Resolved' | 'Rejected') => {
+    const matcher = (c: Complaint) => {
+      if (categoryName === 'Approved (Waiting)') return c.approvalStatus === 'approved' && c.status === 'pending';
+      if (categoryName === 'Resolved') return c.status === 'resolved';
+      return c.approvalStatus === 'rejected';
+    };
+    const targets = complaints.filter(matcher);
+    if (targets.length === 0) return;
+
+    const warning = categoryName === 'Approved (Waiting)'
+      ? `This will permanently delete ${targets.length} approved ticket(s) that are still waiting to be assigned/fixed — not just old records. This cannot be undone. Continue?`
+      : `This will permanently delete ${targets.length} ${categoryName.toLowerCase()} ticket(s). This cannot be undone. Continue?`;
+    if (!window.confirm(warning)) return;
+
+    setResettingCategory(categoryName);
+    setError('');
+    const results = await Promise.allSettled(
+      targets.map(async (c) => {
+        await deleteDoc(doc(db, 'complaints', c.id));
+        const logsSnapshot = await getDocs(query(collection(db, 'maintenance_logs'), where('complaintId', '==', c.id)));
+        await Promise.allSettled(logsSnapshot.docs.map((d: any) => deleteDoc(doc(db, 'maintenance_logs', d.id))));
+      })
+    );
+    const failedCount = results.filter((r) => r.status === 'rejected').length;
+    if (failedCount > 0) {
+      setError(`Cleared ${results.length - failedCount} of ${results.length} "${categoryName}" tickets. ${failedCount} could not be deleted — please retry.`);
+    }
+    setResettingCategory(null);
+  };
+
   // Quick statistics totals
   const totalReports = complaints.length;
   const approvedPercentage = totalReports > 0
@@ -4690,15 +4693,31 @@ function AdminDashboard({ currentUser, complaints, users, forcedTab }: AdminDash
 
               {/* Status legends custom */}
               <div className="mt-4 space-y-1.5 text-[10px] font-mono">
-                {chartsData.statusData.map((item) => (
-                  <div key={item.name} className="flex justify-between items-center">
-                    <div className="flex items-center gap-1.5 text-slate-300">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
-                      <span>{item.name}</span>
+                {chartsData.statusData.map((item) => {
+                  const isResettable = item.name === 'Approved (Waiting)' || item.name === 'Resolved' || item.name === 'Rejected';
+                  return (
+                    <div key={item.name} className="flex justify-between items-center">
+                      <div className="flex items-center gap-1.5 text-slate-300">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
+                        <span>{item.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white">{item.value} tickets</span>
+                        {isResettable && (
+                          <button
+                            onClick={() => handleResetStatusCategory(item.name as 'Approved (Waiting)' | 'Resolved' | 'Rejected')}
+                            disabled={resettingCategory === item.name}
+                            title={`Clear all "${item.name}" tickets`}
+                            id={`reset-status-${item.name.replace(/[^a-zA-Z]/g, '').toLowerCase()}`}
+                            className="p-1 bg-rose-500/10 hover:bg-rose-500 border border-rose-500/20 text-rose-400 hover:text-white rounded-md transition-all cursor-pointer flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <span className="font-bold text-white">{item.value} tickets</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
